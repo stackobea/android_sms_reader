@@ -1,3 +1,6 @@
+## [0.0.2] - 2025-07-26
+- Added comments
+
 ## [0.0.1] - 2025-07-26
 - Initial release of `android_sms_reader`.
 - Supports:

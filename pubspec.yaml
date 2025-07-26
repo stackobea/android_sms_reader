@@ -1,6 +1,6 @@
 name: android_sms_reader
 description: A Flutter plugin to read SMS messages on Android with filtering, search, and streaming support.
-version: 0.0.1
+version: 0.0.2
 homepage: https://github.com/stackobea/android_sms_reader
 repository: https://github.com/stackobea/android_sms_reader
 issue_tracker: https://github.com/stackobea/android_sms_reader/issues

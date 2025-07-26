@@ -29,7 +29,7 @@ Add this to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  android_sms_reader: ^0.0.1
+  android_sms_reader: ^<Latest-Version>
 
 ```
 
@@ -38,7 +38,7 @@ Then run:
 flutter pub get
 ```
 
-## Usage
+## 📲 Usage
 
 ```dart
 import 'package:android_sms_reader/android_sms_reader.dart';
