@@ -1,0 +1,11 @@
+## [0.0.1] - 2025-07-26
+- Initial release of `android_sms_reader`.
+- Supports:
+  - Fetch all SMS messages
+  - Filter by inbox/sent/draft
+  - Pagination
+  - Search messages by keyword/number
+  - Message count by type
+  - Real-time incoming SMS stream
+  - SMS permission handling
+  - Export to JSON
