@@ -1,5 +1,8 @@
 /// A model representing a single SMS message on Android.
 class AndroidSMSMessage {
+  /// The sender ID
+  final int id;
+
   /// The sender or receiver address (phone number) of the SMS message.
   final String address;
 
@@ -14,6 +17,7 @@ class AndroidSMSMessage {
 
   /// Constructs an [AndroidSMSMessage] with the required fields.
   AndroidSMSMessage({
+    required this.id,
     required this.address,
     required this.body,
     required this.date,
@@ -23,6 +27,7 @@ class AndroidSMSMessage {
   /// Creates an [AndroidSMSMessage] from a JSON [Map].
   factory AndroidSMSMessage.fromJson(Map<String, dynamic> json) =>
       AndroidSMSMessage(
+        id: json['id'],
         address: json['address'],
         body: json['body'],
         date: json['date'],
@@ -31,6 +36,7 @@ class AndroidSMSMessage {
 
   /// Converts this [AndroidSMSMessage] instance to a JSON [Map].
   Map<String, dynamic> toJson() => {
+        'id': id,
         'address': address,
         'body': body,
         'date': date,

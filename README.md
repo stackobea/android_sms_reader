@@ -1,4 +1,10 @@
-# android_sms_reader
+# Flutter Android SMS Reader
+
+[![Pub Version](https://img.shields.io/pub/v/android_sms_reader)](https://pub.dev/packages/android_sms_reader)
+[![Pub Likes](https://img.shields.io/pub/likes/android_sms_reader)](https://pub.dev/packages/android_sms_reader)
+[![Pub Points](https://img.shields.io/pub/points/android_sms_reader)](https://pub.dev/packages/android_sms_reader)
+[![Popularity](https://img.shields.io/pub/popularity/android_sms_reader)](https://pub.dev/packages/android_sms_reader)
+
 
 A Flutter plugin to **read SMS messages on Android**. Supports inbox, sent, and draft messages with
 pagination, search, streaming of incoming messages, and permission handling.
