@@ -27,7 +27,7 @@ class AndroidSMSMessage {
   /// Creates an [AndroidSMSMessage] from a JSON [Map].
   factory AndroidSMSMessage.fromJson(Map<String, dynamic> json) =>
       AndroidSMSMessage(
-        id: json['id'],
+        id: 0,
         address: json['address'],
         body: json['body'],
         date: json['date'],
