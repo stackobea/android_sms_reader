@@ -1,4 +1,9 @@
-## [0.0.4] - 2025-07-26
+## [0.0.5] - 2025-07-26
+- Code Refactored
+- gradle updated
+- Sample project - updated
+
+- ## [0.0.4] - 2025-07-26
 - Bug Fixes
 
 ## [0.0.3] - 2025-07-26

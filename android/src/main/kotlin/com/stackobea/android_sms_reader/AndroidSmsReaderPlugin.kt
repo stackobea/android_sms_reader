@@ -3,20 +3,35 @@ package com.stackobea.android_sms_reader
 import android.Manifest
 import android.app.Activity
 import android.content.*
-import android.database.Cursor
-import android.net.Uri
-import android.provider.Telephony
-import androidx.core.app.ActivityCompat
-import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
+import android.provider.Telephony
+import androidx.core.content.ContextCompat
 import io.flutter.embedding.engine.plugins.FlutterPlugin
-import io.flutter.plugin.common.*
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
-import org.json.JSONObject
+import io.flutter.plugin.common.*
+
+/**
+ * Flutter plugin for reading SMS messages on Android.
+ *
+ * Supports:
+ * - Permission check
+ * - Fetching messages with pagination and search
+ * - Getting message count
+ * - Observing new incoming SMS via BroadcastReceiver
+ */
 
 class AndroidSmsReaderPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     EventChannel.StreamHandler, ActivityAware {
+
+    companion object {
+        // Method channel used for calling native SMS methods from Flutter
+        private const val METHOD_CHANNEL_NAME = "android_sms_reader"
+
+        // Event channel used for streaming new incoming SMS to Flutter
+        private const val EVENT_CHANNEL_NAME = "sms_observer"
+    }
+
     private lateinit var channel: MethodChannel
     private lateinit var eventChannel: EventChannel
     private var context: Context? = null
@@ -25,35 +40,57 @@ class AndroidSmsReaderPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
     private var eventSink: EventChannel.EventSink? = null
 
     override fun onAttachedToEngine(binding: FlutterPlugin.FlutterPluginBinding) {
-        channel = MethodChannel(binding.binaryMessenger, "android_sms_reader")
-        eventChannel = EventChannel(binding.binaryMessenger, "sms_observer")
+        context = binding.applicationContext
+
+        channel = MethodChannel(binding.binaryMessenger, METHOD_CHANNEL_NAME)
+        eventChannel = EventChannel(binding.binaryMessenger, EVENT_CHANNEL_NAME)
+
         channel.setMethodCallHandler(this)
         eventChannel.setStreamHandler(this)
-        context = binding.applicationContext
     }
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
+        val currentContext = context
+        if (currentContext == null) {
+            result.error("NULL_CONTEXT", "Context is not available", null)
+            return
+        }
+
         when (call.method) {
             "requestPermissions" -> {
+                // Check if READ_SMS permission is granted
                 val hasPermission = ContextCompat.checkSelfPermission(
-                    context!!,
+                    currentContext,
                     Manifest.permission.READ_SMS
                 ) == PackageManager.PERMISSION_GRANTED
+
                 result.success(hasPermission)
             }
 
             "fetchMessages" -> {
+                // Fetch paginated SMS messages with optional search query
                 val type = call.argument<String>("type")
                 val start = call.argument<Int>("start") ?: 0
                 val count = call.argument<Int>("count") ?: 50
                 val query = call.argument<String>("query")
-                val messages = fetchMessages(type!!, start, count, query)
-                result.success(messages)
+
+                if (type.isNullOrEmpty()) {
+                    result.error("INVALID_ARGUMENT", "Missing required argument: type", null)
+                    return
+                }
+
+                result.success(fetchMessages(type, start, count, query))
             }
 
             "getMessageCount" -> {
+                // Get total count of SMS messages of given type
                 val type = call.argument<String>("type")
-                result.success(getMessageCount(type!!))
+                if (type.isNullOrEmpty()) {
+                    result.error("INVALID_ARGUMENT", "Missing required argument: type", null)
+                    return
+                }
+
+                result.success(getMessageCount(type))
             }
 
             else -> result.notImplemented()
@@ -66,30 +103,42 @@ class AndroidSmsReaderPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
         count: Int,
         query: String?
     ): List<Map<String, Any>> {
-        val uri = when (type) {
+        val currentContext = context ?: return emptyList()
+
+        // Use appropriate SMS URI based on type ("inbox", "sent", etc.)
+        val uri = when (type.lowercase()) {
             "inbox" -> Telephony.Sms.Inbox.CONTENT_URI
             "sent" -> Telephony.Sms.Sent.CONTENT_URI
             "draft" -> Telephony.Sms.Draft.CONTENT_URI
             else -> Telephony.Sms.Inbox.CONTENT_URI
         }
 
-        val selection = if (query != null) "body LIKE ? OR address LIKE ?" else null
-        val selectionArgs = if (query != null) arrayOf("%$query%", "%$query%") else null
-        val cursor = context!!.contentResolver.query(
+        // Apply filter if query is provided (search in body or address)
+        val selection = if (!query.isNullOrEmpty()) "body LIKE ? OR address LIKE ?" else null
+        val selectionArgs = if (!query.isNullOrEmpty()) arrayOf("%$query%", "%$query%") else null
+
+        // Sort messages by date with pagination
+        val sortOrder = "date DESC LIMIT $count OFFSET $start"
+        val list = mutableListOf<Map<String, Any>>()
+
+        currentContext.contentResolver.query(
             uri,
             null,
             selection,
             selectionArgs,
-            "date DESC LIMIT $count OFFSET $start"
-        )
+            sortOrder
+        )?.use { cursor ->
+            val bodyIdx = cursor.getColumnIndex("body")
+            val addressIdx = cursor.getColumnIndex("address")
+            val dateIdx = cursor.getColumnIndex("date")
+            val typeIdx = cursor.getColumnIndex("type")
 
-        val list = mutableListOf<Map<String, Any>>()
-        cursor?.use {
-            while (it.moveToNext()) {
-                val body = it.getString(it.getColumnIndexOrThrow("body"))
-                val address = it.getString(it.getColumnIndexOrThrow("address"))
-                val date = it.getLong(it.getColumnIndexOrThrow("date"))
-                val messageType = it.getString(it.getColumnIndexOrThrow("type"))
+            while (cursor.moveToNext()) {
+                val body = if (bodyIdx >= 0) cursor.getString(bodyIdx) else ""
+                val address = if (addressIdx >= 0) cursor.getString(addressIdx) else ""
+                val date = if (dateIdx >= 0) cursor.getLong(dateIdx) else 0L
+                val messageType = if (typeIdx >= 0) cursor.getString(typeIdx) else ""
+
                 list.add(
                     mapOf(
                         "body" to body,
@@ -100,46 +149,65 @@ class AndroidSmsReaderPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 )
             }
         }
+
         return list
     }
 
     private fun getMessageCount(type: String): Int {
-        val uri = when (type) {
+        val currentContext = context ?: return 0
+
+        val uri = when (type.lowercase()) {
             "inbox" -> Telephony.Sms.Inbox.CONTENT_URI
             "sent" -> Telephony.Sms.Sent.CONTENT_URI
             "draft" -> Telephony.Sms.Draft.CONTENT_URI
             else -> Telephony.Sms.Inbox.CONTENT_URI
         }
-        val cursor = context!!.contentResolver.query(uri, null, null, null, null)
-        return cursor?.count ?: 0
+
+        return currentContext.contentResolver.query(uri, null, null, null, null)?.use {
+            it.count
+        } ?: 0
     }
 
     override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
         eventSink = events
         smsReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, intent: Intent?) {
-                val extras = intent?.extras ?: return
-                val pdus = extras.get("pdus") as? Array<*>
-                val messages = pdus?.map {
-                    val sms = Telephony.Sms.Intents.getMessagesFromIntent(intent)[0]
+                val pdus = intent?.extras?.get("pdus") as? Array<*> ?: return
+
+                val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent).map { sms ->
                     mapOf(
-                        "address" to sms.originatingAddress,
+                        "address" to (sms.originatingAddress ?: ""),
                         "body" to sms.messageBody,
                         "date" to sms.timestampMillis,
                         "type" to "inbox"
                     )
                 }
-                messages?.forEach { eventSink?.success(it) }
+
+                messages.forEach { eventSink?.success(it) }
             }
         }
-        context?.registerReceiver(
-            smsReceiver,
-            IntentFilter("android.provider.Telephony.SMS_RECEIVED")
-        )
+
+        // Register SMS broadcast receiver to listen for incoming messages
+        try {
+            context?.registerReceiver(
+                smsReceiver,
+                IntentFilter("android.provider.Telephony.SMS_RECEIVED")
+            )
+        } catch (e: Exception) {
+            eventSink?.error("RECEIVER_ERROR", "Failed to register SMS receiver", e.message)
+        }
     }
 
     override fun onCancel(arguments: Any?) {
-        context?.unregisterReceiver(smsReceiver)
+
+        // Unregister receiver when event stream is cancelled
+        // This avoids memory leaks and prevents duplicate events
+        try {
+            context?.unregisterReceiver(smsReceiver)
+        } catch (_: Exception) {
+            // Receiver might not be registered — safe to ignore
+        }
+
         smsReceiver = null
         eventSink = null
     }
@@ -150,10 +218,13 @@ class AndroidSmsReaderPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
 
     override fun onDetachedFromActivityForConfigChanges() {}
     override fun onReattachedToActivityForConfigChanges(binding: ActivityPluginBinding) {}
-    override fun onDetachedFromActivity() {}
+    override fun onDetachedFromActivity() {
+        activity = null
+    }
 
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
         eventChannel.setStreamHandler(null)
+        context = null
     }
 }
