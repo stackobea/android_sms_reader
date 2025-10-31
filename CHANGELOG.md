@@ -1,3 +1,8 @@
+## [0.0.6] - 2025-10-31
+- Removed the library name
+- Modified the SDK ver
+- Upgraded to the latest version
+
 ## [0.0.5] - 2025-07-26
 - Code Refactored
 - gradle updated

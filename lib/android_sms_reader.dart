@@ -1,4 +1,4 @@
-library android_sms_reader;
+library;
 
 // Package : AndroidSMSReader
 // Author : Stackobea [codeWithTitto]

@@ -9,7 +9,7 @@ buildscript {
     }
 
     dependencies {
-        classpath("com.android.tools.build:gradle:8.7.3")
+        classpath("com.android.tools.build:gradle:8.12.3")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
     }
 }
@@ -26,7 +26,7 @@ apply plugin: "kotlin-android"
 
 android {
     namespace = "com.stackobea.android_sms_reader"
-    compileSdk = 34
+    compileSdk = 36
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
@@ -42,6 +42,7 @@ android {
     }
 
     defaultConfig {
+        targetSdk = 36
         minSdk 21
     }
 }
