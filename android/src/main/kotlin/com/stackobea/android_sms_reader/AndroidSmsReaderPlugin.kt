@@ -17,6 +17,7 @@ import io.flutter.plugin.common.*
  * Supports:
  * - Permission check
  * - Fetching messages with pagination and search
+ * - Incremental inbox reads after a (date, _id) checkpoint
  * - Getting message count
  * - Observing new incoming SMS via BroadcastReceiver
  */
@@ -93,6 +94,15 @@ class AndroidSmsReaderPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
                 result.success(getMessageCount(type))
             }
 
+            // Incremental inbox read: rows strictly after (afterDate, afterId),
+            // ordered date ASC, _id ASC. Replies asynchronously.
+            "fetchInboxAfter" ->
+                SmsIncrementalQuery.fetchAsync(currentContext.contentResolver, call, result)
+
+            // Count of inbox rows strictly after (afterDate, afterId).
+            "countInboxAfter" ->
+                SmsIncrementalQuery.countAsync(currentContext.contentResolver, call, result)
+
             else -> result.notImplemented()
         }
     }
@@ -128,19 +138,24 @@ class AndroidSmsReaderPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             selectionArgs,
             sortOrder
         )?.use { cursor ->
+            val idIdx = cursor.getColumnIndex("_id")
             val bodyIdx = cursor.getColumnIndex("body")
             val addressIdx = cursor.getColumnIndex("address")
             val dateIdx = cursor.getColumnIndex("date")
             val typeIdx = cursor.getColumnIndex("type")
 
             while (cursor.moveToNext()) {
-                val body = if (bodyIdx >= 0) cursor.getString(bodyIdx) else ""
-                val address = if (addressIdx >= 0) cursor.getString(addressIdx) else ""
+                // Android SMS provider's stable _id (0 if the column is missing).
+                val id = if (idIdx >= 0) cursor.getLong(idIdx) else 0L
+                // getString can return null for odd rows; keep the map non-null.
+                val body = (if (bodyIdx >= 0) cursor.getString(bodyIdx) else null) ?: ""
+                val address = (if (addressIdx >= 0) cursor.getString(addressIdx) else null) ?: ""
                 val date = if (dateIdx >= 0) cursor.getLong(dateIdx) else 0L
-                val messageType = if (typeIdx >= 0) cursor.getString(typeIdx) else ""
+                val messageType = (if (typeIdx >= 0) cursor.getString(typeIdx) else null) ?: ""
 
                 list.add(
                     mapOf(
+                        "id" to id,
                         "body" to body,
                         "address" to address,
                         "date" to date,
@@ -174,8 +189,12 @@ class AndroidSmsReaderPlugin : FlutterPlugin, MethodChannel.MethodCallHandler,
             override fun onReceive(ctx: Context?, intent: Intent?) {
                 val pdus = intent?.extras?.get("pdus") as? Array<*> ?: return
 
+                // NOTE: "id" is 0 here. SMS_RECEIVED is delivered before the message
+                // is written to the provider, so no _id exists yet. Do not use
+                // observed messages as sync checkpoints; use fetchInboxAfter.
                 val messages = Telephony.Sms.Intents.getMessagesFromIntent(intent).map { sms ->
                     mapOf(
+                        "id" to 0L,
                         "address" to (sms.originatingAddress ?: ""),
                         "body" to sms.messageBody,
                         "date" to sms.timestampMillis,
